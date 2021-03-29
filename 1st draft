@@ -1,0 +1,202 @@
+import simplekml
+import pandas as pd
+import geopandas as gpd
+from polycircles import polycircles
+from geopy import distance
+import folium
+from folium import Choropleth, Circle, Marker
+from folium.plugins import HeatMap, MarkerCluster
+
+site = pd.read_csv("Estaciones.csv")
+site = pd.DataFrame(site)
+points = pd.read_csv("Oxxo.csv")
+points = pd.DataFrame(points)
+
+
+
+def points_withinradius(data_site, data_points):
+	# We´ll see what locations fall withing our radius of interest
+	# We create dictionary of final locations
+	site_wr = {
+				"Sitio": [],
+				"Lat": [],
+				"Lon": []
+				}
+
+	points_wr = {
+				"Punto": [],
+				"Lat": [],
+				"Lon": []
+			  }
+
+	site_points = {
+				"Site": [],
+				"Points within radius": []
+			  }
+
+	# We iterate through evey location finding which points fall
+	# within radius. We use get_loc to find exact column position.
+	site_name_c = data_site.columns.get_loc("Sitio")
+	site_lat_c = data_site.columns.get_loc("Lat")
+	site_lon_c = data_site.columns.get_loc("Lon")
+	
+	points_name_c = data_points.columns.get_loc("Punto")
+	points_lat_c = data_points.columns.get_loc("Lat")
+	points_lon_c = data_points.columns.get_loc("Lon")
+	
+	for i, row in data_site.iterrows():
+		# iloc[row, column]
+		site_name = data_site.iloc[i, site_name_c]
+		site_lat = data_site.iloc[i,site_lat_c]
+		site_lon = data_site.iloc[i,site_lon_c]
+		center_point = [{'lat': site_lat, 'log': site_lon}]
+				
+		helper1 = len(points_wr["Punto"])
+
+		# We iterate through each location
+		for j, row in data_points.iterrows():
+			
+			points_name = data_points.iloc[j, points_name_c]
+			points_lat = data_points.iloc[j,points_lat_c]
+			points_lon = data_points.iloc[j,points_lon_c]
+			test_point = [{'lat': points_lat, 'log': points_lon}]
+			
+			radius = 800
+
+			center_point_tuple = tuple(center_point[0].values())
+			test_point_tuple = tuple(test_point[0].values()) 
+			
+			dis = distance.distance(center_point_tuple, test_point_tuple).meters
+
+			# If distance from point to location is less than radius, append
+			if dis < radius:
+				
+				# Points within radius database
+				points_wr["Punto"].append(points_name)
+				points_wr["Lat"].append(points_lat)
+				points_wr["Lon"].append(points_lon)
+				
+		helper2 = len(points_wr["Punto"])
+		points_number = helper2 - helper1
+		print(site_name, " : ", points_number)
+
+		# Initially helper1 is 0, if helper 2 is bigger than helper 1
+		# points have fall within radius, so we procede 
+		if  helper2 > helper1:
+			# Sites with points within raidus database
+			site_wr["Sitio"].append(site_name)
+			site_wr["Lat"].append(site_lat)
+			site_wr["Lon"].append(site_lon)
+			
+			# Sites and number of points within radius database
+			site_points["Site"].append(site_name)
+			site_points["Points within radius"].append(points_number)
+			
+			# helper2 converts to helper1 to check for new added points
+			helper1 = helper2
+	
+	# Dictionary to panda dataframe, because of proximity between sites
+	# and points some might duplicate, we fix it with .drop_duplicates
+	points_wr = pd.DataFrame.from_dict(points_wr)
+	points_wr = points_wr.drop_duplicates(ignore_index=True)
+
+	site_wr = pd.DataFrame.from_dict(site_wr)
+	site_wr = site_wr.drop_duplicates(ignore_index=True)
+	
+	site_points = pd.DataFrame.from_dict(site_points)
+	site_points = site_points.drop_duplicates(ignore_index=True)
+	
+	print(points_wr)
+	print(site_wr)	
+	print(site_points)
+	
+	# points_wr.to_csv(index = False)
+	# site_wr.to_csv(index = False)
+	# location_points.to_csv(index = False)
+
+	set_radius_kml(data = site_wr)
+	puntos(data = points_wr)
+
+
+def puntos (data):
+	points_name_c = data.columns.get_loc("Punto")
+	points_lat_c = data.columns.get_loc("Lat")
+	points_lon_c = data.columns.get_loc("Lon")
+	
+	points_kml = simplekml.Kml()
+	#cambie Sitios.iloc por data
+	for p, row in data.iterrows():
+		
+		puntos_name = data.iloc[p, points_name_c]
+		puntos_lat = data.iloc[p, points_lat_c]
+		puntos_lon = data.iloc[p, points_lon_c]
+		
+		points_kml.newpoint(name = None, coords = [(puntos_lon, puntos_lat)])
+	points_kml.save("puntos.kml")
+
+
+
+def set_radius_kml (data):
+	radius_name_c = data.columns.get_loc("Sitio")
+	radius_lat_c = data.columns.get_loc("Lat")
+	radius_lon_c = data.columns.get_loc("Lon")
+	
+	for r, row in data.iterrows():		
+		radius_name = data.iloc[r, radius_name_c]
+		radius_lat = data.iloc[r,radius_lat_c]
+		radius_lon = data.iloc[r,radius_lon_c]
+
+		polycircle = polycircles.Polycircle(latitude = radius_lat,
+											longitude = radius_lon,
+											radius = 800,
+											number_of_vertices = 150)
+		
+		kml_radius = simplekml.Kml()
+		pol = kml_radius.newpolygon(name="%s" %radius_name,
+							 outerboundaryis=polycircle.to_kml())
+		pol.style.polystyle.color = simplekml.Color.changealphaint(200, simplekml.Color.blue)
+		kml_radius.save("%s.kml" %radius_name)
+
+
+def myheatmap(data_points, data_site):
+	mymap = folium.Map(location=[19.40497111063479,-99.14826426194216], tiles=" cartodbpositron", zoom_start=10)
+	HeatMap(data = data_points [['Lat', 'Lon']], radius= 30).add_to(mymap)
+	
+	site_linea_c = data_site.columns.get_loc("Linea")
+	site_name_c = data_site.columns.get_loc("Sitio")
+	site_lat_c = data_site.columns.get_loc("Lat")
+	site_lon_c = data_site.columns.get_loc("Lon")
+
+	for p, row in data_site.iterrows():
+		
+		puntos_linea = data_site.iloc[p, site_linea_c]
+		puntos_name = data_site.iloc[p, site_name_c]
+		puntos_lat = data_site.iloc[p, site_lat_c]
+		puntos_lon = data_site.iloc[p, site_lon_c]
+		site_coord = [puntos_lat, puntos_lon]
+		
+		if puntos_linea == "L1":
+			folium.Marker(location = site_coord, popup = puntos_name, icon=folium.Icon(color="red", icon="bus", prefix='fa'),).add_to(mymap)
+		elif puntos_linea == "L2":
+			folium.Marker(location = site_coord, popup = puntos_name, icon=folium.Icon(color="purple", icon="bus", prefix='fa'),).add_to(mymap)
+		elif puntos_linea == "L3":
+			folium.Marker(location = site_coord, popup = puntos_name, icon=folium.Icon(color="green", icon="bus", prefix='fa'),).add_to(mymap)
+		elif puntos_linea == "L4":
+			folium.Marker(location = site_coord, popup = puntos_name, icon=folium.Icon(color="orange", icon="bus", prefix='fa'),).add_to(mymap)
+		elif puntos_linea == "L5":
+			folium.Marker(location = site_coord, popup = puntos_name, icon=folium.Icon(color="darkblue", icon="bus", prefix='fa'),).add_to(mymap)
+		elif puntos_linea == "TL":
+			folium.Marker(location = site_coord, popup = puntos_name, icon=folium.Icon(color="blue", icon="bus", prefix='fa'),).add_to(mymap)
+		elif puntos_linea == "ST":
+			folium.Marker(location = site_coord, popup = puntos_name, icon=folium.Icon(color="pink", icon="bus", prefix='fa'),).add_to(mymap)
+			
+	
+	mymap.save("mymap.html")
+
+
+
+
+# set_radius_kml(site)
+# points_withinradius(data_site = site, data_points = points)
+# puntos(points)
+myheatmap(data_points = points, data_site = site) 
