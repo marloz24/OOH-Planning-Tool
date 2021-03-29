@@ -7,9 +7,11 @@ import folium
 from folium import Choropleth, Circle, Marker
 from folium.plugins import HeatMap, MarkerCluster
 
-site = pd.read_csv("Estaciones.csv")
+url = "https://raw.githubusercontent.com/marloz24/OOH-Planning-Tool/main/Coordinates/GEX%20Sites.csv"
+site = pd.read_csv(url)
 site = pd.DataFrame(site)
-points = pd.read_csv("Oxxo.csv")
+url ="https://raw.githubusercontent.com/marloz24/OOH-Planning-Tool/main/Coordinates/Oxxo.csv"
+points = pd.read_csv(url)
 points = pd.DataFrame(points)
 
 
@@ -199,4 +201,4 @@ def myheatmap(data_points, data_site):
 # set_radius_kml(site)
 # points_withinradius(data_site = site, data_points = points)
 # puntos(points)
-myheatmap(data_points = points, data_site = site) 
+# myheatmap(data_points = points, data_site = site) 
